@@ -59,7 +59,7 @@ class PositionalEncoding(nn.Module):
 		pe[:, 1::2] = torch.cos(position * div_term)
 		self.register_buffer('pe', pe)
 
-	def forward(self, x);
+	def forward(self, x):
 		T = x.size(1)
 		return x + self.pe[:T].unsqueeze(0)
 # Img to Latex
@@ -91,3 +91,57 @@ class Image2Latex(nn.Module):
 		out = out.permute(1, 0, 2) # [B,T,D]
 		logits = self.output_proj(out) # [B, T, V]
 		return logits
+
+# Beam search
+def beam_search(model: Image2Latex, memory: torch.Tensor, tokanizer: Tokenizer, beam_size: int = 5, max_len: int = 120, device='cpu', length_norm: float = 0.7):
+	model.eval()
+	sos = tokenizer.sos
+	eos = tokenizer.eos
+	with torch.no_grad():
+		# initial hypothesis list: tuples of token list and score
+		hyps = [([sos], 0.0)]
+		completed = []
+		for step in range(max_len):
+			all_candidates = []
+			for seq, score in hyps:
+				if seq[-1] == eos:
+					completed.append((seq, score))
+					continue
+				#prepare input tensor
+				seq_tensor = torch.tensor([seq], dtype=torch.long, device=device)
+				logits = model.decode_step(seq_tensor, memory)
+				#take last time step logits
+				logp = torch.log_softmax(logits[:, -1, :], dim=-1).squeeze(0)
+				topk_logp, topk_ids = torch.topk(logp, beam_size)
+				for k in range(topk_ids.size(0)):
+					nid = int(topk_ids[k].item())
+					nscore = score + float(topk_logp[k].item())
+					new_seq = seq + [nid]
+					all_candidates.append((new_seq, nscore))
+			#keep best beam_size candidates by score
+			all_candidtes.sort(key=lambda x: x[1], reverse=True)
+			hyps = all_candidates[:beam_size]
+			#stop early if enough completed
+			if len(completed) >= beam_size:
+				break
+			#add remaining hyps to completed if not empty
+			completed.extend(hyps)
+			#apply length normalization and sort
+			normalized = []
+			for seq, score in completed:
+				length = max(1, len(seq))
+				norm_socre = score / (length ** length_norm)
+				normalized.append((seq, norm_score))
+			normalized.sort(key=lambda x: x[1], reverse=True)
+			#decode top k sequences to token strings, drop sos and everything after eos
+			results = []
+			for seq, s in normalized[:beam_size]:
+				#remove sos
+				out_ids = seq[1:]
+				#cut at first eos
+				if eos in out_ids:
+					out_ids = out_ids[:out_ids.index(eos)]
+				tokens = tokenizer.decode(out_ids)
+				results.append((' '.join(tokens), float(s)))
+			return results
+
