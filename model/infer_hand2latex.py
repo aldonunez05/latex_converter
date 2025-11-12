@@ -145,3 +145,62 @@ def beam_search(model: Image2Latex, memory: torch.Tensor, tokanizer: Tokenizer, 
 				results.append((' '.join(tokens), float(s)))
 			return results
 
+# Image preprocessing
+def make_transform(target_h = 128, target_w = 512):
+	tf = transforms.Compose([
+		transforms.Greyscale(num_output_channels=1),
+		transforms.Resize((target_h, target_w)),
+		transforms.ToTensor(),
+		transforms.Normalize([0.5], [0.5])
+	])
+	return tf
+
+# Utility to load model and tokenizer
+def load_tokenizer(tok_path: str) -> Tokenizer:
+	with open(tok_path, 'r', encoding='utf8') as f:
+		t2i = json.load(f)
+	return Tokenizer(t2i)
+
+def load_model(checkpoint_path: str, vocab_size: int, device: str):
+	model = Image2Latex(vocab_size=vocab_size, d_model=256, nhead=8, num_layers=3)
+	ckpt = torch.load(checkpoint_path, map_location=device)
+	if 'model_state_dict' in ckpt:
+		state = ckpt['model_state_dict']
+	else:
+		state = ckpt
+	model.load_state_dict(state)
+	model.to(device)
+	model.eval()
+	return model
+
+# Main predict function
+def predict_image_to_latex(image_path: str, model: Image2Latex, tokenizer: Tokenizer, devide: str, beam_size: int=5):
+	tf = make_transform()
+	img = Image.open(image_path).convert('RGB')
+	x = tf(img).unsqueeze(0).to(device)
+	memory = model.encode_images(x) # [S, B, D]
+	results = beam_search(model, memory, tokenizer, beam_size=beam_size, max_len=120, device=device)
+	return results
+
+# CLI Entry for now until frontend is made
+def main():
+	parser = argparse.ArgumentParser(description='Run inference on a single image')
+	parser.add_argument('--checkpoint', required=True, help='path to model checkpoint file')
+	parser.add_argument('--tokenizer', required=True, help='path to tokenizer json file mapping token to id')
+	parser.add_argument('--image', required=True, help='path to input image to conver')
+	parser.add_argument('--beam', type=int, default=5, help='beam size')
+	args = parser.parse_args()
+
+	#Cody ur gonna work on this more but this is the simpliest version for now
+	device = 'cuda' if torch.cuda.is_available() else 'cpu'
+	print('Using device', device)
+	
+	tokenizer = load_tokenizer(args.tokenizer)
+	model = load_model(args.checkpoint, vocab_size=len(tokenizer.t2i), device=device)
+	results = predict_image_to_latex(args.image, model, tokenizer, device=device, beam_size=args.beam)
+	print('Top predictions:')
+	for i, (txt, score) in enumerate(results):
+		print(f'[{i+1}] score {score:.4f} : {txt}')
+
+if __name__ == '__main__':
+	main()
