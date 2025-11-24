@@ -103,14 +103,14 @@ class HTRModel(nn.Module):
 
         decoder_input = torch.tensor([SOS_TOKEN] * batch_size, device=device)
 
-        all_predicitions = []
+        all_predictions = []
 
         for t in range(MAX_SEQUENCE_LENGTH):
             output, decoder_hidden, attn_weights = self.decoder(
                     decoder_input, decoder_hidden, encoder_outputs
             )
             
-            all_predicitions.append(output)
+            all_predictions.append(output)
 
             top_value, top_index = output.topk(1, dim=1)
 

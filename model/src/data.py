@@ -25,11 +25,11 @@ class Vocabulary:
 
     def encode(self, latex_string: str) -> List[int]:
         tokens = latex_string.split()
-        indicies = [self.stoi.get(token, UNK_TOKEN) for token in tokens]
-        return indicies
+        indices = [self.stoi.get(token, UNK_TOKEN) for token in tokens]
+        return indices
     
-    def decode(self, latex_string: str) -> str:
-        token = [self.itos[i] for i in indicies if i not in [SOS_TOKEN, EOS_TOKEN, PAD_TOKEN]]
+    def decode(self, indices: List[int]) -> str:
+        tokens = [self.itos[i] for i in indices if i not in [SOS_TOKEN, EOS_TOKEN, PAD_TOKEN]]
         return ' '.join(tokens)
 
 class HandwritingDataset(Dataset):

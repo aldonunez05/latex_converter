@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 import sys 
 import os
+import csv
 
 project_root = os.path.abspath(os.path.dirname(__file__))
 if project_root not in sys.path:
@@ -12,9 +13,24 @@ from src.data import Vocabulary, HandwritingDataset, collate_fn
 from src.img2seq import HTRModel
 from src.constants import HIDDEN_SIZE, PAD_TOKEN, MAX_SEQUENCE_LENGTH
 
+def calculate_metrics(predictions, targets):
+    predicted_indices = predictions.argmax(dim=-1)
+
+    mask = targets != PAD_TOKEN
+
+    correct = (predicted_indices == targets) & mask
+
+    num_correct = correct.sum().item()
+    num_total = mask.sum().item()
+
+    return num_correct, num_total
+
 def train_epoch(model, dataloader, criterion, optimizer, device, teacher_forcing_ratio):
     model.train()
     total_loss = 0
+    total_correct = 0
+    total_tokens = 0
+
 
     for i, (images, target_sequences) in enumerate(dataloader):
         images = images.to(device)
@@ -22,7 +38,7 @@ def train_epoch(model, dataloader, criterion, optimizer, device, teacher_forcing
 
         optimizer.zero_grad()
 
-        predicitons = model(images, target_sequences, teacher_forcing_ratio=teacher_forcing_ratio)
+        predictions = model(images, target_sequences, teacher_forcing_ratio=teacher_forcing_ratio)
 
         P_flat = predictions.reshape(-1, model.decoder.out.out_features)
         T_flat = target_sequences.reshape(-1)
@@ -35,21 +51,34 @@ def train_epoch(model, dataloader, criterion, optimizer, device, teacher_forcing
         optimizer.step()
         total_loss += loss.item()
 
-        if (i+1) % 5 == 0:
-            print(f" Batch {i+1}/{len(dataloader)}, Loss: {loss.item():.4f}")
-        return total_loss / len(dataloader)
+        n_correct, n_total = calculate_metrics(predictions, target_sequences)
+        total_correct += n_correct
+        total_tokens += n_total
+        
+        del images, target_sequences, predictions, P_flat, T_flat, loss
+
+        if (i+1) % 10 == 0:
+            avg_loss = total_loss / (i+1)
+            print(f" Batch {i+1}/{len(dataloader)}, Loss: {avg_loss:.4f}")
+        
+        avg_loss = total_loss / len(dataloader)
+        avg_acc = total_correct / total_tokens if total_tokens > 0 else 0
+
+        return avg_loss, avg_acc
 
 
 def evaluate(model, dataloader, criterion, device, vocab):
     model.eval()
     total_loss = 0
+    total_correct = 0
+    total_tokens = 0
 
     with torch.no_grad():
         for i, (images, target_sequences) in enumerate(dataloader):
             images = images.to(device)
             target_sequences = target_sequences.to(device)
 
-            predicitons = model(images, target_sequences, teacher_forcing_ratio=0.0)
+            predictions = model(images, target_sequences, teacher_forcing_ratio=0.0)
 
             P_flat = predictions.reshape(-1, model.decoder.out.out_features)
             T_flat = target_sequences.reshape(-1)
@@ -57,13 +86,20 @@ def evaluate(model, dataloader, criterion, device, vocab):
             loss = criterion(P_flat, T_flat)
             total_loss += loss.item()
 
+            n_correct, n_total = calculate_metrics(predictions, target_sequences)
+            total_correct += n_correct
+            total_tokens += n_total
+
             if i == 0:
                 predicted_indices = predictions.argmax(dim=2)
 
-                print("\n [Validation Sample Output]")
-                print(f" Ground Truth: {vocab.decode(target_sequences[0].tolist())}")
-                print(f" Prediction: {vocab.decode(predicted_indices[0].tolist())}\n")
-    return total_loss / len(dataloader)
+                #print("\n [Validation Sample Output]")
+                #print(f" Ground Truth: {vocab.decode(target_sequences[0].tolist())}")
+                #print(f" Prediction: {vocab.decode(predicted_indices[0].tolist())}\n")
+
+        avg_loss = total_loss / len(dataloader)
+        avg_acc = total_correct / total_tokens if total_tokens > 0 else 0
+    return avg_loss, avg_acc
 
 def train(model, train_loader, val_loader, vocab, num_epochs, device, initial_lr=0.001):
     criterion = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
@@ -73,17 +109,33 @@ def train(model, train_loader, val_loader, vocab, num_epochs, device, initial_lr
 
     print("\nStarting Training")
 
-    for epoch in range(num_epochs):
-        tfr = teacher_forcing_schedule.get(epoch, 0.0)
+    log_file = open("training_log.csv", "w", newline='')
+    writer = csv.writer(log_file)
+    writer.writerow(["Epoch", "Train Loss", "Train Acc", "Val Loss", "Val Acc"])
+    
+    try:
+        for epoch in range(num_epochs):
+            if device.type == 'cuda':
+                torch.cuda.empty_cache() # Cuda free :0000000
 
-        print(f"\n---Epoch {epoch+1}/{num_epochs} (TFR: {tfr:.2f}) ---")
+            tfr = teacher_forcing_schedule.get(epoch, 0.0)
+            print(f"\n--- Epoch {epoch+1}/{num_epochs} (TFR: {tfr:.2f}) ---")
 
-        train_loss = train_epoch(model, train_loader, criterion, optimizer, device, tfr)
+            train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, tfr)
+            val_loss, val_acc = evaluate(model, val_loader, criterion, device, vocab)
 
-        val_loss = evaluate(model, val_loader, criterion, device, vocab)
+            print(f"Epoch {epoch+1} Results:")
+            print(f"  Train Loss: {train_loss:.4f} | Train Acc: {train_acc*100:.2f}%")
+            print(f"  Val Loss:   {val_loss:.4f} | Val Acc:   {val_acc*100:.2f}%")
 
-        print(f"Epoch {epoch+1} complete. Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
-
+            writer.writerow([epoch+1, train_loss, train_acc, val_loss, val_acc])
+            log_file.flush()
+    except KeyboardInterrupt:
+        print("\n Training interrupted by user. Saving logs...")
+    finally:
+        log_file.close()
+        print("\nLogs saved to 'training_log.csv'")
+    
 
 if __name__ == "__main__":
     print("setting up htr training pipeline")
@@ -97,10 +149,10 @@ if __name__ == "__main__":
 
     model = HTRModel(VOCAB_SIZE, HIDDEN_SIZE).to(device)
 
-    BATCH_SIZE = 16
+    BATCH_SIZE = 12
     NUM_TRAIN_SAMPLES = 500
     NUM_VAL_SAMPLES = 100
-    NUM_EPOCHS = 3
+    NUM_EPOCHS = 5
 
     train_dataset = HandwritingDataset(NUM_TRAIN_SAMPLES, vocab)
     val_dataset = HandwritingDataset(NUM_VAL_SAMPLES, vocab)
