@@ -18,9 +18,11 @@ class ImageEncoder(nn.Module):
         self.conv1 = nn.Conv2d(IMAGE_CHANNELS, 32, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm2d(32)
         self.pool1 = nn.MaxPool2d(2,2)
+
         self.conv2 = nn.Conv2d(32, 64, kernel_size =3, padding=1)
-        self.bn2 = nn.BatchNorm2d(2,2)
+        self.bn2 = nn.BatchNorm2d(64)
         self.pool2 = nn.MaxPool2d(2,2)
+        
         self.conv3 = nn.Conv2d(64, hidden_size, kernel_size=3, padding=1)
         self.bn3 = nn.BatchNorm2d(hidden_size)
         self.hidden_size = hidden_size
@@ -85,7 +87,7 @@ class HTRModel(nn.Module):
     def __init__(self, vocab_size, hidden_size):
         super(HTRModel, self).__init__()
         self.encoder = ImageEncoder(hidden_size)
-        self.decoder = Attention(vocab_size, hidden_size)
+        self.decoder = AttentionDecoder(vocab_size, hidden_size)
         self.hidden_size = hidden_size
 
     def forward(self, input_image, target_sequence=None, teacher_forcing_ratio=0.5):
@@ -94,14 +96,14 @@ class HTRModel(nn.Module):
         batch_size = input_image.size(0)
         device = input_image.device
 
-        decoder_hidden(
+        decoder_hidden = (
             torch.zeros(1, batch_size, self.hidden_size).to(device),
             torch.zeros(1, batch_size, self.hidden_size).to(device)
         )
 
         decoder_input = torch.tensor([SOS_TOKEN] * batch_size, device=device)
 
-        all_predicitons = []
+        all_predicitions = []
 
         for t in range(MAX_SEQUENCE_LENGTH):
             output, decoder_hidden, attn_weights = self.decoder(

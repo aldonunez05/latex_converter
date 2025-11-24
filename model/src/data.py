@@ -19,12 +19,12 @@ class Vocabulary:
     mock for now
     """
     def __init__(self, token_list: List[str]):
-        self.iots = ['<SOS>', '<EOS>', '<PAD>', '<UNK>'] + token_list
+        self.itos = ['<SOS>', '<EOS>', '<PAD>', '<UNK>'] + token_list
         self.stoi = {token: i for i, token in enumerate(self.itos)}
         self.vocab_size = len(self.itos)
 
     def encode(self, latex_string: str) -> List[int]:
-        token = latex_string.split()
+        tokens = latex_string.split()
         indicies = [self.stoi.get(token, UNK_TOKEN) for token in tokens]
         return indicies
     
@@ -68,20 +68,20 @@ class HandwritingDataset(Dataset):
 
         return image, target_sequence
 
-    def collate_fn(batch):
-        images, target_sequences = zip(*batch)
+def collate_fn(batch):
+    images, target_sequences = zip(*batch)
 
-        padded_sequences = []
-        for seq in target_sequences:
-            if len(seq) > MAX_SEQUENCE_LENGTH:
-                padded_seq = seq[:MAX_SEQUENCE_LENGTH]
-            else:
-                padding_needed = MAX_SEQUENCE_LENGTH - len(seq)
-                padded_seq = F.pad(seq, (0, padding_needed), 'constant', PAD_TOKEN)
+    padded_sequences = []
+    for seq in target_sequences:
+        if len(seq) > MAX_SEQUENCE_LENGTH:
+              padded_seq = seq[:MAX_SEQUENCE_LENGTH]
+        else:
+            padding_needed = MAX_SEQUENCE_LENGTH - len(seq)
+            padded_seq = F.pad(seq, (0, padding_needed), 'constant', PAD_TOKEN)
             padded_sequences.append(padded_seq)
 
-        images = torch.stack(images, 0)
-        padded_sequences = torch.stack(padded_sequences, 0)
+    images = torch.stack(images, 0)
+    padded_sequences = torch.stack(padded_sequences, 0)
 
-        return images, padded_sequences
+    return images, padded_sequences
 
