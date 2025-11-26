@@ -1,4 +1,6 @@
-//hi
+#//hi
+
+#for reference in python u comment with the pound symbol (#)
 
 import torch
 import torch.nn as nn
