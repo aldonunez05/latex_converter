@@ -1,0 +1,14 @@
+{
+  "input_shape": [
+    1,
+    28,
+    28
+  ],
+  "num_classes": 10,
+  "best_val_accuracy": 99.53,
+  "final_val_accuracy": 99.5,
+  "normalization": {
+    "mean": 0.1307,
+    "std": 0.3081
+  }
+}
