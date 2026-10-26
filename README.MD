@@ -1,2 +1,4 @@
 **Deep Learning Model to convert handwritten notes to latex**
-i hate javascript
+
+
+gonna go back to working on ts if anyone wants to help.
