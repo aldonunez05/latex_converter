@@ -5,8 +5,8 @@
     28
   ],
   "num_classes": 10,
-  "best_val_accuracy": 99.53,
-  "final_val_accuracy": 99.5,
+  "best_val_accuracy": 99.42,
+  "final_val_accuracy": 99.38,
   "normalization": {
     "mean": 0.1307,
     "std": 0.3081

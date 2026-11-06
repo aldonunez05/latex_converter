@@ -17,24 +17,23 @@ def preprocess(path):
 
 	img = cv2.GaussianBlur(img, (5,5), 0)
 	_, img = cv2.threshold(
-		img, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-	)
+		img, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+	
+	kernel = np.ones((3,3), np.uint8)
+	img = cv2.dilate(img, kernel, iterations=1)
 
 	coords = cv2.findNonZero(img)
 	x, y, w, h = cv2.boundingRect(coords)
 	img = img[y:y+h, x:x+w]
 
-	size = max(w, h)
-	padded = np.zeros((size, size), dtype=np.uint8)
-	padded[
-		(size-h)//2:(size-h)//2+h,
-		(size-w)//2:(size-w)//2+w
-	] = img
+	pad = int(max(w,h) * 0.3)
+	img = cv2.copyMakeBorder(img, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=0)
 
-	img = cv2.resize(padded, (28, 28))
+	img = cv2.resize(img, (28, 28), interpolation=cv2.INTER_AREA)
 	img = img / 255.0
+	img = (img-0.5) / 0.5
 
-	return torch.tensor(img).unsqueeze(0).unsqueeze(0)
+	return torch.tensor(img).unsqueeze(0).unsqueeze(0).float()
 
 transform = T.Compose([
 	T.Resize((28, 28)),
@@ -51,9 +50,10 @@ def predict_image(path, model):
 
 	with torch.no_grad():
 		logits = model(x)
-		pred = logits.argmax(dim=1).item()
+		pred = logits.softmax(logits,dim=1).item()
+		conf, class_idx = torch.max(pred, dim =1)
 	
-	return pred
+	return class_idx.item()
 
 def main():
 	model = HandwritingCNN()

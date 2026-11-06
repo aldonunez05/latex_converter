@@ -1,0 +1,13 @@
+/data
+/classification/digits/data
+__pycache__/
+*.onnx
+*.pth
+*.onnx.data
+training_progress.png
+.DS_Store
+.venv/
+/classification/digits/rust_cli/target
+*.swp
+*.swo
+/runs
